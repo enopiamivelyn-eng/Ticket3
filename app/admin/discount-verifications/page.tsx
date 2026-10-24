@@ -5,15 +5,18 @@ import AuthGate from '../../components/AuthGate';
 import Navbar from '../../components/Navbar';
 import Sidebar from '../../components/Sidebar';
 import { useAuth } from '../../components/AuthContext';
+import { formatPrice } from '@/lib/routes';
 
 type Application = {
   id: string; userId: string; passengerName: string; passengerEmail: string; passengerCategory: string;
   verificationStatus: string; adminRemarks: string | null; submittedAt: string; reviewedAt: string | null;
+  bookings: Array<{ id: string; passengerName: string; status: string; paymentStatus: string; baseFare: number; discountRate: number; discountAmount: number; totalAmount: number }>;
 };
 type Counts = { pending?: number; verified?: number; rejected?: number };
 type Review = Application & { imageUrl: string };
 
 const categoryName = (value: string) => ({ student: 'Student', pwd: 'PWD', senior_citizen: 'Senior Citizen' }[value] || value);
+const formatCurrency = (amount: number) => formatPrice(amount);
 
 export default function DiscountVerificationAdminPage() {
   const { user } = useAuth();
@@ -91,13 +94,14 @@ export default function DiscountVerificationAdminPage() {
       <label>Category <select value={category} onChange={(event) => setCategory(event.target.value)}><option value="">All categories</option><option value="student">Student</option><option value="pwd">PWD</option><option value="senior_citizen">Senior Citizen</option></select></label>
       <label>Search <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name or email" /></label>
     </div>
-    <div className="ds-table-wrap"><table className="ds-table"><thead><tr><th>Passenger</th><th>Category</th><th>Submitted</th><th>Status</th><th>Admin remarks</th><th>Action</th></tr></thead><tbody>
-      {shown.map((application) => <tr key={application.id}><td><strong>{application.passengerName || 'Passenger'}</strong><br/><small>{application.passengerEmail}</small></td><td>{categoryName(application.passengerCategory)}</td><td>{new Date(application.submittedAt).toLocaleString()}</td><td>{application.verificationStatus}</td><td>{application.adminRemarks || '—'}</td><td><button type="button" className="ds-btn ds-btn-soft ds-btn-sm" onClick={() => void openReview(application)} disabled={busy}>View ID{application.verificationStatus === 'pending' ? ' & review' : ''}</button></td></tr>)}
-      {!shown.length && <tr><td colSpan={6}>No applications match these filters.</td></tr>}
+    <div className="ds-table-wrap"><table className="ds-table"><thead><tr><th>Passenger</th><th>Booking reference</th><th>Category</th><th>Base / rate / discount / final</th><th>Submitted</th><th>Status</th><th>Admin remarks</th><th>Action</th></tr></thead><tbody>
+      {shown.map((application) => <tr key={application.id}><td><strong>{application.passengerName || 'Passenger'}</strong><br/><small>{application.passengerEmail}</small></td><td>{application.bookings.length ? application.bookings.map((booking) => <div key={booking.id}><code>{booking.id.slice(0, 8)}</code></div>) : 'Not booked yet'}</td><td>{categoryName(application.passengerCategory)}</td><td>{application.bookings.length ? application.bookings.map((booking) => <div key={booking.id}>{formatCurrency(booking.baseFare)} / {Math.round(booking.discountRate * 100)}% / {formatCurrency(booking.discountAmount)} / <strong>{formatCurrency(booking.totalAmount)}</strong></div>) : '—'}</td><td>{new Date(application.submittedAt).toLocaleString()}</td><td>{application.verificationStatus}</td><td>{application.adminRemarks || '—'}</td><td><button type="button" className="ds-btn ds-btn-soft ds-btn-sm" onClick={() => void openReview(application)} disabled={busy}>View ID{application.verificationStatus === 'pending' ? ' & review' : ''}</button></td></tr>)}
+      {!shown.length && <tr><td colSpan={8}>No applications match these filters.</td></tr>}
     </tbody></table></div>
   </main></div>
   {review && <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setReview(null); }} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', padding: 16 }}><section role="dialog" aria-modal="true" aria-labelledby="discount-review-title" className="ds-card" style={{ width: 'min(900px, 100%)', maxHeight: '95vh', overflow: 'auto', padding: 24 }}>
-    <h2 id="discount-review-title">Review passenger ID</h2><p>{review.passengerName} · {categoryName(review.passengerCategory)} · Submitted {new Date(review.submittedAt).toLocaleString()}</p><p>Status: <strong>{review.verificationStatus}</strong></p>
+    <h2 id="discount-review-title">Review passenger ID</h2><p>{review.passengerName} ({review.passengerEmail}) · {categoryName(review.passengerCategory)} · Submitted {new Date(review.submittedAt).toLocaleString()}</p><p>Status: <strong>{review.verificationStatus}</strong></p>{review.reviewedAt && <p>Reviewed: {new Date(review.reviewedAt).toLocaleString()}</p>}
+    {review.bookings.length > 0 && <div className="ds-table-wrap"><table className="ds-table"><thead><tr><th>Booking ref</th><th>Base fare</th><th>Rate</th><th>Discount</th><th>Final fare</th></tr></thead><tbody>{review.bookings.map((booking) => <tr key={booking.id}><td>{booking.id}</td><td>{formatCurrency(booking.baseFare)}</td><td>{Math.round(booking.discountRate * 100)}%</td><td>{formatCurrency(booking.discountAmount)}</td><td>{formatCurrency(booking.totalAmount)}</td></tr>)}</tbody></table></div>}
     <a href={review.imageUrl} target="_blank" rel="noreferrer" aria-label="Open larger private ID image"><img src={review.imageUrl} alt={`${categoryName(review.passengerCategory)} ID submitted by ${review.passengerName}`} style={{ display: 'block', maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', margin: '16px auto', borderRadius: 8 }} /></a>
     {review.verificationStatus === 'pending' ? <><label htmlFor="discount-admin-remarks">Admin remarks (required when rejecting)</label><textarea id="discount-admin-remarks" value={remarks} onChange={(event) => setRemarks(event.target.value)} maxLength={1000} rows={3} style={{ width: '100%', margin: '8px 0 16px' }} /><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="ds-btn ds-btn-primary" type="button" onClick={() => void decide('verified')} disabled={busy}>{busy ? 'Saving…' : 'Approve ID'}</button><button className="ds-btn ds-btn-outline" type="button" onClick={() => void decide('rejected')} disabled={busy}>Reject ID</button><button className="ds-btn ds-btn-soft" type="button" onClick={() => setReview(null)} disabled={busy}>Close</button></div></> : <button className="ds-btn ds-btn-soft" type="button" onClick={() => setReview(null)}>Close</button>}
   </section></div>}

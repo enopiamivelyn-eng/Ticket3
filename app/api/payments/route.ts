@@ -23,6 +23,12 @@ export async function POST(request: NextRequest) {
     if (booking.paymentStatus === 'paid') {
       return NextResponse.json({ error: 'This booking is already paid.' }, { status: 409 });
     }
+    if (booking.passengerCategory !== 'regular' && booking.discountVerificationId) {
+      const verification = await prisma.discountVerification.findUnique({ where: { id: booking.discountVerificationId }, select: { verificationStatus: true } });
+      if (verification?.verificationStatus === 'pending') {
+        return NextResponse.json({ error: 'Your ID is still waiting for admin review. Submit payment after the verification decision so the final fare is correct.' }, { status: 409 });
+      }
+    }
     if (!['unpaid', 'pending', 'failed'].includes(booking.paymentStatus)) return NextResponse.json({ error: 'This booking is not awaiting payment.' }, { status: 409 });
     const updated = await prisma.booking.updateMany({
       where: { id: bookingId, userId: booking.userId, status: { notIn: ['cancelled', 'rejected'] }, paymentStatus: { not: 'paid' } },

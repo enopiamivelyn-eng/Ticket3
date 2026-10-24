@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
         discountRate: true,
         discountAmount: true,
         discountVerificationId: true,
+        discountVerification: { select: { verificationStatus: true, adminRemarks: true } },
         bookingDate: true,
         createdAt: true,
         trip: {
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest) {
       discountRate: booking.discountRate,
       discountAmount: booking.discountAmount,
       discountVerificationId: booking.discountVerificationId,
+      discountVerification: booking.discountVerification,
       bookingDate: booking.bookingDate,
       route: booking.trip.route.name,
       from: booking.trip.route.fromCity,
@@ -152,8 +154,13 @@ export async function POST(request: NextRequest) {
       passengerName,
       passengerEmail,
       passengerPhone,
-      passengerCategory = 'regular',
+      passengerCategory,
+      discountVerificationId,
     } = body;
+
+    if (discountVerificationId !== undefined && discountVerificationId !== null && typeof discountVerificationId !== 'string') {
+      return NextResponse.json({ error: 'Invalid discount verification reference.' }, { status: 400 });
+    }
 
     // Validate required fields
     const seatNumbers: string[] = Array.isArray(requestedSeatNumbers)
@@ -183,12 +190,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const verifiedDiscount = passengerCategory === 'regular' ? null : await prisma.discountVerification.findFirst({
-      where: { userId: user.userId, passengerCategory, verificationStatus: 'verified' },
-      orderBy: { reviewedAt: 'desc' },
-      select: { id: true },
-    });
-    if (verifiedDiscount) {
+    let linkedVerification: { id: string; verificationStatus: string } | null = null;
+    if (passengerCategory !== 'regular') {
+      linkedVerification = discountVerificationId
+        ? await prisma.discountVerification.findFirst({
+            where: { id: discountVerificationId, userId: user.userId, passengerCategory, verificationStatus: { in: ['pending', 'verified'] } },
+            select: { id: true, verificationStatus: true },
+          })
+        : await prisma.discountVerification.findFirst({
+            where: { userId: user.userId, passengerCategory, verificationStatus: 'verified' },
+            orderBy: { reviewedAt: 'desc' },
+            select: { id: true, verificationStatus: true },
+          });
+      if (!linkedVerification) return NextResponse.json({ error: 'Submit an ID application for this passenger category before booking.' }, { status: 400 });
+    }
+    if (linkedVerification?.verificationStatus === 'verified') {
       const token = request.cookies.get('auth-token')?.value || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
       const account = await getSupabaseUser(token);
       const accountName = account.user_metadata?.name?.trim().toLocaleLowerCase();
@@ -197,7 +213,7 @@ export async function POST(request: NextRequest) {
       }
     }
     const baseFare = trip.price * seatNumbers.length;
-    const discountRate = verifiedDiscount ? 0.2 : 0;
+    const discountRate = linkedVerification?.verificationStatus === 'verified' ? 0.2 : 0;
     const discountAmount = Math.round((trip.price * discountRate + Number.EPSILON) * 100) / 100;
     const finalFare = Math.round((baseFare - discountAmount + Number.EPSILON) * 100) / 100;
 
@@ -245,7 +261,7 @@ export async function POST(request: NextRequest) {
           baseFare,
           discountRate,
           discountAmount,
-          discountVerificationId: verifiedDiscount?.id ?? null,
+          discountVerificationId: linkedVerification?.id ?? null,
           totalAmount: finalFare,
           paymentMethod: null,
           status: 'pending',

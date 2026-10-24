@@ -28,6 +28,7 @@ export async function GET(
     let booking = await prisma.booking.findUnique({
       where: { id },
       include: {
+        discountVerification: { select: { verificationStatus: true, adminRemarks: true } },
         trip: {
           include: {
             route: true,
@@ -61,7 +62,7 @@ export async function GET(
       });
       booking = await prisma.booking.findUnique({
         where: { id },
-        include: { trip: { include: { route: true, bus: true } } },
+        include: { discountVerification: { select: { verificationStatus: true, adminRemarks: true } }, trip: { include: { route: true, bus: true } } },
       });
       if (!booking) return NextResponse.json({ error: 'Booking not found' }, { status: 404 });
     }
@@ -85,6 +86,8 @@ export async function GET(
         discountRate: booking.discountRate,
         discountAmount: booking.discountAmount,
         discountVerificationId: booking.discountVerificationId,
+        discountVerificationStatus: booking.discountVerification?.verificationStatus ?? null,
+        discountAdminRemarks: booking.discountVerification?.adminRemarks ?? null,
         bookingDate: booking.bookingDate,
         route: booking.trip.route.name,
         from: booking.trip.route.fromCity,

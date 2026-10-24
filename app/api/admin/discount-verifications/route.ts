@@ -16,7 +16,10 @@ export async function GET(request: NextRequest) {
       where: { ...(status ? { verificationStatus: status } : {}), ...(category ? { passengerCategory: category } : {}) },
       orderBy: { submittedAt: 'desc' },
       take: 200,
-      select: { id: true, userId: true, passengerCategory: true, verificationStatus: true, adminRemarks: true, submittedAt: true, reviewedAt: true, reviewedBy: true },
+      select: {
+        id: true, userId: true, passengerCategory: true, verificationStatus: true, adminRemarks: true, submittedAt: true, reviewedAt: true, reviewedBy: true,
+        bookings: { orderBy: { bookingDate: 'desc' }, select: { id: true, passengerName: true, passengerEmail: true, status: true, paymentStatus: true, baseFare: true, discountRate: true, discountAmount: true, totalAmount: true } },
+      },
     });
     const ids = [...new Set(records.map((record) => record.userId))];
     const profiles = new Map<string, { email: string; name: string }>();
@@ -33,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
     const counts = await prisma.discountVerification.groupBy({ by: ['verificationStatus'], _count: { _all: true } });
     return NextResponse.json({
-      applications: records.map((record) => ({ ...record, passengerName: profiles.get(record.userId)?.name || '', passengerEmail: profiles.get(record.userId)?.email || '' })),
+      applications: records.map(({ bookings, ...record }) => ({ ...record, passengerName: profiles.get(record.userId)?.name || bookings[0]?.passengerName || '', passengerEmail: profiles.get(record.userId)?.email || bookings[0]?.passengerEmail || '', bookings })),
       counts: Object.fromEntries(counts.map((row) => [row.verificationStatus, row._count._all])),
     }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
   } catch (cause) {

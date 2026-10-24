@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
         take: 10,
         select: { id: true, passengerCategory: true, verificationStatus: true, adminRemarks: true, submittedAt: true, reviewedAt: true, idFilePath: true },
       }),
-      prisma.discountVerification.findMany({ where: { userId: user.userId, verificationStatus: 'verified' }, distinct: ['passengerCategory'], select: { passengerCategory: true } }),
+      prisma.discountVerification.findMany({ where: { userId: user.userId, verificationStatus: 'verified' }, distinct: ['passengerCategory'], orderBy: { reviewedAt: 'desc' }, select: { id: true, passengerCategory: true } }),
       prisma.discountVerification.count({ where: { userId: user.userId, verificationStatus: 'pending' } }),
     ]);
     const token = getAccessToken(request);
@@ -38,6 +38,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       verification,
       verifiedCategories: verified.map((record) => record.passengerCategory),
+      verifiedApplications: verified.map((record) => ({ id: record.id, passengerCategory: record.passengerCategory })),
       canSubmit: pendingCount === 0,
     }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
   } catch (cause) {

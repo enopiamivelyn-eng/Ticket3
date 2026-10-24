@@ -25,6 +25,7 @@ interface Booking {
   baseFare: number;
   discountRate: number;
   discountAmount: number;
+  discountVerification: { verificationStatus: string; adminRemarks: string | null } | null;
   bookingDate: string;
   trip: {
     route: {
@@ -90,6 +91,9 @@ export default function BookingsPage() {
 
   useEffect(() => {
     void fetchBookings();
+    if (new URLSearchParams(window.location.search).get('discount') === 'pending') {
+      setSuccessMessage('Booking saved. Your ID is awaiting verification; payment is paused until the final fare is confirmed.');
+    }
     const interval = window.setInterval(() => { void fetchBookings(); }, 8000);
     return () => window.clearInterval(interval);
   }, [fetchBookings]);
@@ -281,6 +285,7 @@ export default function BookingsPage() {
                         </svg>
                         {booking.trip.route.fromCity} → {booking.trip.route.toCity}
                       </h3>
+                      <small>Booking reference: {booking.id}</small>
                       {isAdmin && <button type="button" className="ds-row-passenger-toggle" onClick={() => setViewingPassengerBookingId(viewingPassengerBookingId === booking.id ? null : booking.id)} aria-expanded={viewingPassengerBookingId === booking.id} aria-controls={`passenger-details-${booking.id}`}>
                         {viewingPassengerBookingId === booking.id ? 'Hide passenger details' : 'View passenger details'}
                       </button>}
@@ -316,12 +321,13 @@ export default function BookingsPage() {
                         {displayBookingStatus(booking.status)}
                       </span>
                       <span style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.72)', marginTop: '0.25rem' }}>
-                        {booking.passengerCategory === 'regular' ? 'Regular fare' : `${booking.passengerCategory.replace('_', ' ')} · ${booking.discountRate ? `${Math.round(booking.discountRate * 100)}% discount` : 'no discount until ID verified'}`}
+                        {booking.passengerCategory === 'regular' ? 'Regular · 0% · ID verification not required' : `${booking.passengerCategory === 'senior_citizen' ? 'Senior Citizen' : booking.passengerCategory.toUpperCase()} · ${booking.discountRate ? `${Math.round(booking.discountRate * 100)}% discount` : 'no discount until ID verified'} · ID ${booking.discountVerification?.verificationStatus ?? 'not submitted'}`}
                       </span>
+                      {booking.discountVerification?.adminRemarks && <small style={{ color: 'rgba(255,255,255,0.8)' }}>Admin feedback: {booking.discountVerification.adminRemarks}</small>}
                       {isAdmin && ['pending', 'approved', 'confirmed'].includes(booking.status) && <button type="button" className="ds-btn ds-btn-soft ds-btn-sm" onClick={() => { setEditingBookingId(editingBookingId === booking.id ? null : booking.id); setStatusDraft(''); }} aria-expanded={editingBookingId === booking.id}>{editingBookingId === booking.id ? 'Close' : 'Edit status'}</button>}
                       {(!isAdmin || editingBookingId === booking.id) && (
                         <span className={`ds-row-fare ${isAdmin ? 'ds-row-fare-large' : ''}`}>
-                          {booking.discountAmount > 0 && <small style={{ display: 'block', fontSize: '0.75rem', opacity: 0.8 }}>Fare {formatPrice(booking.baseFare)} · −{formatPrice(booking.discountAmount)}</small>}
+                          <small style={{ display: 'block', fontSize: '0.75rem', opacity: 0.8 }}>Base {formatPrice(booking.baseFare)} · {Math.round(booking.discountRate * 100)}% discount ({formatPrice(booking.discountAmount)}) · Final</small>
                           {formatPrice(booking.totalAmount)}
                         </span>
                       )}

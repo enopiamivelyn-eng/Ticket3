@@ -20,6 +20,12 @@ interface Booking {
   paymentStatus: string;
   paymentMethod: string | null;
   totalAmount: number;
+  passengerCategory: string;
+  baseFare: number;
+  discountRate: number;
+  discountAmount: number;
+  discountVerificationStatus: string | null;
+  discountAdminRemarks: string | null;
   bookingDate: string;
   trip: {
     route: {
@@ -251,6 +257,13 @@ function PaymentContent() {
               </div>
 
               <div className="ds-pay-total">
+                {booking.passengerCategory !== 'regular' && <div style={{ marginBottom: 10 }}>
+                  <p>Category: {booking.passengerCategory === 'senior_citizen' ? 'Senior Citizen' : booking.passengerCategory.toUpperCase()}</p>
+                  <p>ID verification: {booking.discountVerificationStatus || 'not submitted'}</p>
+                  <p>Original fare: {formatPrice(booking.baseFare)} · Discount: {Math.round(booking.discountRate * 100)}% ({formatPrice(booking.discountAmount)})</p>
+                  {booking.discountVerificationStatus === 'pending' && <div className="ds-alert ds-alert-info" role="status">Payment is unavailable until an administrator reviews your ID. Your fare is provisional while verification is pending.</div>}
+                  {booking.discountVerificationStatus === 'rejected' && <div className="ds-alert ds-alert-error" role="alert">Your discount was rejected; this booking remains at the regular fare. {booking.discountAdminRemarks}</div>}
+                </div>}
                 <span className="ds-detail-label" style={{ margin: 0 }}>
                   Total Amount
                 </span>

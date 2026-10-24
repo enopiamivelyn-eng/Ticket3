@@ -65,9 +65,10 @@ export default function ReservePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [searchError, setSearchError] = useState('');
-  const [passengerCategory, setPassengerCategory] = useState('regular');
+  const [passengerCategory, setPassengerCategory] = useState('');
   const [verifiedCategories, setVerifiedCategories] = useState<string[]>([]);
-  const [verification, setVerification] = useState<{ verificationStatus: string; passengerCategory: string; adminRemarks: string | null } | null>(null);
+  const [verifiedVerificationIds, setVerifiedVerificationIds] = useState<Record<string, string>>({});
+  const [verification, setVerification] = useState<{ id: string; verificationStatus: string; passengerCategory: string; adminRemarks: string | null } | null>(null);
   const [idFile, setIdFile] = useState<File | null>(null);
   const [idPreview, setIdPreview] = useState('');
   const [idUploadMessage, setIdUploadMessage] = useState('');
@@ -114,7 +115,11 @@ export default function ReservePage() {
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Could not check discount verification.');
-        if (active) { setVerifiedCategories(data.verifiedCategories || []); setVerification(data.verification || null); }
+        if (active) {
+          setVerifiedCategories(data.verifiedCategories || []);
+          setVerifiedVerificationIds(Object.fromEntries((data.verifiedApplications || []).map((item: { id: string; passengerCategory: string }) => [item.passengerCategory, item.id])));
+          setVerification(data.verification || null);
+        }
       })
       .catch(() => { if (active) setVerification(null); });
     return () => { active = false; };
@@ -154,9 +159,10 @@ export default function ReservePage() {
   const verifiedFare = passengerCategory !== 'regular' && verifiedCategories.includes(passengerCategory) && seatNumbers.length === 1;
   const baseTotal = selectedTrip ? selectedTrip.price * passengers : 0;
   const total = verifiedFare ? baseTotal - selectedTrip!.price * 0.2 : baseTotal;
+  const hasMatchingProof = passengerCategory === 'regular' || verifiedCategories.includes(passengerCategory) || Boolean(verification?.id && verification.passengerCategory === passengerCategory && verification.verificationStatus === 'pending');
   const takenSeatNumbers = normalizeBookedSeatNumbers(selectedTrip?.bookedSeatNumbers);
   const canSubmit = Boolean(
-    signedIn && selectedTrip && seatNumbers.length === passengers && passengerName.trim() &&
+    signedIn && passengerCategory && hasMatchingProof && selectedTrip && seatNumbers.length === passengers && passengerName.trim() &&
     contactNumber.trim() && /^\S+@\S+\.\S+$/.test(email.trim())
   );
 
@@ -243,11 +249,16 @@ export default function ReservePage() {
           passengerEmail: email.trim(),
           passengerPhone: contactNumber.trim(),
           passengerCategory,
+          discountVerificationId: passengerCategory === 'regular' ? null : verifiedCategories.includes(passengerCategory) ? verifiedVerificationIds[passengerCategory] : verification?.id,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not create your booking.');
-      window.location.assign(`/payment?bookingId=${encodeURIComponent(data.booking.id)}`);
+      if (passengerCategory !== 'regular' && !verifiedFare) {
+        window.location.assign('/bookings?discount=pending');
+      } else {
+        window.location.assign(`/payment?bookingId=${encodeURIComponent(data.booking.id)}`);
+      }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Could not create your booking.');
     } finally {
@@ -390,9 +401,9 @@ export default function ReservePage() {
                 <label className="ds-booking-field" htmlFor="passenger-name"><span>Full name</span><input id="passenger-name" value={passengerName} onChange={(event) => setPassengerName(event.target.value)} placeholder="As shown on your ID" autoComplete="name" required /></label>
                 <label className="ds-booking-field" htmlFor="passenger-phone"><span>Mobile number</span><input id="passenger-phone" type="tel" value={contactNumber} onChange={(event) => setContactNumber(event.target.value)} placeholder="e.g. 0917 123 4567" autoComplete="tel" required /></label>
                 <label className="ds-booking-field" htmlFor="passenger-email"><span>Email</span><input id="passenger-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>
-                <label className="ds-booking-field" htmlFor="passenger-category"><span>Passenger category</span><select id="passenger-category" value={passengerCategory} onChange={(event) => { setPassengerCategory(event.target.value); setIdFile(null); setIdUploadMessage(''); }}><option value="regular">Regular · no special discount</option><option value="student">Student · 20% when verified</option><option value="pwd">PWD · 20% when verified</option><option value="senior_citizen">Senior Citizen · 20% when verified</option></select></label>
+                <label className="ds-booking-field" htmlFor="passenger-category"><span>Passenger category</span><select id="passenger-category" value={passengerCategory} onChange={(event) => { setPassengerCategory(event.target.value); setIdFile(null); setIdUploadMessage(''); }} required><option value="">Select passenger category</option><option value="regular">Regular Passenger · 0%</option><option value="student">Student · 20% when verified</option><option value="senior_citizen">Senior Citizen · 20% when verified</option><option value="pwd">Person with Disability (PWD) · 20% when verified</option></select></label>
               </div>
-              {passengerCategory !== 'regular' && <div className="ds-card ds-card-pad" style={{ marginTop: 16 }}>
+              {passengerCategory !== '' && passengerCategory !== 'regular' && <div className="ds-card ds-card-pad" style={{ marginTop: 16 }}>
                 <strong>Discount ID verification</strong>
                 <p className="ds-card-sub">Status: {verifiedCategories.includes(passengerCategory) ? 'Verified' : verification?.passengerCategory === passengerCategory ? verification.verificationStatus : 'Not submitted'}. A 20% discount applies only after verification and only to one named passenger fare.</p>
                 {verification?.passengerCategory === passengerCategory && verification.adminRemarks && <p className="ds-alert ds-alert-info">Admin feedback: {verification.adminRemarks}</p>}
@@ -403,6 +414,8 @@ export default function ReservePage() {
                   <button type="button" className="ds-btn ds-btn-soft ds-btn-sm" onClick={() => void uploadDiscountId()} disabled={!idFile || uploadingId || verification?.verificationStatus === 'pending'}>{uploadingId ? 'Submitting ID…' : 'Submit ID for verification'}</button>
                   {idUploadMessage && <p role="status">{idUploadMessage}</p>}
                   {verification?.verificationStatus === 'pending' && <p>Your ID is waiting for admin review. The fare is undiscounted until approval.</p>}
+                  {verification?.verificationStatus === 'rejected' && <p>Upload a replacement ID and submit it before booking with this category.</p>}
+                  {!verification && <p>Submit your ID before booking with this category. The booking will use the regular fare while verification is pending.</p>}
                   <p>Only administrators can view this private document. You may also manage it from <Link href="/discount-verification">Discount Verification</Link>.</p>
                 </>}
               </div>}
@@ -420,6 +433,8 @@ export default function ReservePage() {
               {verifiedFare && <><div><dt>Original fare</dt><dd>{formatPrice(baseTotal)}</dd></div><div><dt>Verified discount (20%)</dt><dd>−{formatPrice(selectedTrip!.price * 0.2)}</dd></div></>}
               <div className="is-total"><dt>Total</dt><dd>{formatPrice(total)}</dd></div>
             </dl>
+            {!passengerCategory && <p className="ds-note">Choose a passenger category to continue.</p>}
+            {passengerCategory !== '' && passengerCategory !== 'regular' && !verifiedFare && <p className="ds-note">{hasMatchingProof ? 'ID verification is pending. The displayed fare is provisional at the regular rate; an administrator may apply the verified discount before payment.' : 'Submit an ID for verification before you can book using this category. No unverified discount is applied.'}</p>}
             {signedIn ? (
               <button className="ds-booking-confirm" type="submit" form="bus-booking-form" disabled={!canSubmit || isSubmitting}>
                 {isSubmitting ? 'Saving booking…' : 'Reserve a Seat'} <span aria-hidden="true">→</span>
