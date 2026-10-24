@@ -333,7 +333,7 @@ export default function BookingsPage() {
             ) : (
               <div className="ds-list">
                 {filteredBookings.map((booking) => (
-                  <article key={booking.id} className={`ds-row ${isAdmin && (editingBookingId === booking.id || viewingPassengerBookingId === booking.id) ? 'ds-row-expanded' : ''}`}>
+                  <article key={booking.id} className={`ds-row ds-booking-list-row ${isAdmin && (editingBookingId === booking.id || viewingPassengerBookingId === booking.id) ? 'ds-row-expanded' : ''}`}>
                     <div className="ds-row-thumb" aria-hidden="true">
                       <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="2.5" y="5" width="19" height="12" rx="2.5" />

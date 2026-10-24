@@ -197,7 +197,7 @@ export default function SearchPage() {
               {trips.length > 0 && <span className="ds-badge ds-badge-green">{trips.length} trip{trips.length === 1 ? '' : 's'} found</span>}
             </div>}
             {loading ? <p className="ds-note">Searching available trips…</p> : trips.length ? (
-              <div className="ds-route-grid">
+              <div className="ds-route-grid ds-search-results-grid">
                 {trips.map((trip) => {
                   const bookedSeats = new Set(trip.bookedSeatNumbers || []);
                   const freeSeats = Array.from({ length: trip.capacity }, (_, index) => `${String.fromCharCode(65 + Math.floor(index / 4))}${(index % 4) + 1}`).filter((seat) => !bookedSeats.has(seat));

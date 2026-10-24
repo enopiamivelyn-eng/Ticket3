@@ -6404,3 +6404,77 @@ button, input, select, textarea { font: inherit; }
   .ds-booking-benefits { justify-content: flex-start; flex-direction: column; margin-left: .3rem; }
   .ds-booking-layout { width: calc(100% - 26px); }
 }
+
+/* Keep search-result details readable when the sidebar leaves a narrow content area. */
+.ds-search-results-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  align-items: stretch;
+}
+.ds-search-results-grid > .ds-card { min-width: 0; }
+.ds-search-results-grid .ds-search-details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ds-search-results-grid .ds-search-details dd { line-height: 1.45; overflow-wrap: anywhere; }
+
+/* Booking summaries use a stable grid instead of squeezing fare and actions together. */
+.ds-booking-list-row {
+  display: grid;
+  grid-template-columns: 62px minmax(260px, 1fr) minmax(220px, 0.72fr) auto;
+  align-items: center;
+  gap: 1rem;
+}
+.ds-booking-list-row .ds-row-main { grid-column: 2; }
+.ds-booking-list-row .ds-row-aside {
+  grid-column: 3;
+  min-width: 0;
+  align-items: flex-start;
+}
+.ds-booking-list-row .ds-row-actions {
+  grid-column: 4;
+  max-width: 250px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ds-booking-list-row .ds-row-actions .ds-note {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border-left: 3px solid #93a8ab;
+  border-radius: 9px;
+  color: #617a7e;
+  background: #f6f8f9;
+  text-align: center;
+}
+.ds-booking-list-row .ds-row-passenger,
+.ds-booking-list-row .ds-row-status-editor { grid-column: 2 / -1; }
+.ds-booking-list-row .ds-row-fare { white-space: normal; }
+
+@media (max-width: 1120px) {
+  .ds-booking-list-row {
+    grid-template-columns: 56px minmax(0, 1fr) minmax(190px, 0.7fr);
+  }
+  .ds-booking-list-row .ds-row-actions {
+    grid-column: 2 / -1;
+    max-width: none;
+    justify-content: flex-end;
+  }
+}
+@media (max-width: 760px) {
+  .ds-booking-list-row {
+    grid-template-columns: 54px minmax(0, 1fr);
+    align-items: start;
+  }
+  .ds-booking-list-row .ds-row-main,
+  .ds-booking-list-row .ds-row-aside,
+  .ds-booking-list-row .ds-row-actions { grid-column: 2; }
+  .ds-booking-list-row .ds-row-aside { align-items: flex-start; }
+  .ds-booking-list-row .ds-row-actions { justify-content: flex-start; width: auto; }
+  .ds-booking-list-row .ds-row-passenger,
+  .ds-booking-list-row .ds-row-status-editor { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  .ds-search-results-grid .ds-search-details { grid-template-columns: 1fr; }
+  .ds-booking-list-row { grid-template-columns: 44px minmax(0, 1fr); gap: 0.75rem; padding: 0.9rem; }
+  .ds-booking-list-row .ds-row-thumb { width: 44px; height: 44px; }
+  .ds-booking-list-row .ds-row-meta { gap: 0.4rem 0.75rem; }
+  .ds-booking-list-row .ds-row-actions { gap: 0.5rem; }
+  .ds-booking-list-row .ds-row-actions .ds-note { width: 100%; }
+  .ds-booking-list-row .ds-row-fare { white-space: normal; }
+}
