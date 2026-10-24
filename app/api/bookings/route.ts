@@ -171,12 +171,14 @@ export async function POST(request: NextRequest) {
     const seatNumbers: string[] = Array.isArray(parsedSeatNumbers)
       ? parsedSeatNumbers.map((seat: unknown) => typeof seat === 'string' ? seat.trim().toUpperCase() : '')
       : typeof seatNumber === 'string' ? [seatNumber.trim().toUpperCase()] : [];
-    if (!tripId || seatNumbers.length === 0 || seatNumbers.length > 10 || seatNumbers.some((seat) => !/^[A-Z]\d{1,2}$/.test(seat)) || new Set(seatNumbers).size !== seatNumbers.length || !passengerName || !passengerEmail || !passengerPhone || !['regular', 'student', 'pwd', 'senior_citizen'].includes(category)) {
-      return NextResponse.json(
-        { error: 'All passenger details are required' },
-        { status: 400 }
-      );
+    if (!tripId) return NextResponse.json({ error: 'Choose a trip before booking.' }, { status: 400 });
+    if (!seatNumbers.length || seatNumbers.length > 10 || seatNumbers.some((seat) => !/^[A-Z]\d{1,2}$/.test(seat)) || new Set(seatNumbers).size !== seatNumbers.length) {
+      return NextResponse.json({ error: 'Choose valid available seat(s) before booking.' }, { status: 400 });
     }
+    if (typeof passengerName !== 'string' || !passengerName.trim()) return NextResponse.json({ error: 'Enter the passenger full name.' }, { status: 400 });
+    if (typeof passengerEmail !== 'string' || !/^\S+@\S+\.\S+$/.test(passengerEmail.trim())) return NextResponse.json({ error: 'Enter a valid passenger email address.' }, { status: 400 });
+    if (typeof passengerPhone !== 'string' || !passengerPhone.trim()) return NextResponse.json({ error: 'Enter the passenger mobile number.' }, { status: 400 });
+    if (!['regular', 'student', 'pwd', 'senior_citizen'].includes(category)) return NextResponse.json({ error: 'Choose a passenger category.' }, { status: 400 });
 
     if (category !== 'regular' && seatNumbers.length !== 1) {
       return NextResponse.json({ error: 'A verified special-category fare applies to one named passenger. Book one discounted seat at a time.' }, { status: 400 });

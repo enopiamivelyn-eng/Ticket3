@@ -35,7 +35,7 @@ export default function NotFound() {
               <Link href="/" className="ds-btn ds-btn-primary ds-btn-block">
                 Back to Home
               </Link>
-              <Link href="/book-details" className="ds-btn ds-btn-outline ds-btn-block">
+              <Link href="/reserve" className="ds-btn ds-btn-outline ds-btn-block">
                 Book a Ticket
               </Link>
             </div>

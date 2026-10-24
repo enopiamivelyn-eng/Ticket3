@@ -119,7 +119,7 @@ export default function LandingPage() {
 
           <div className="ds-route-grid ds-mb">
             {popularRoutes.map((route, index) => (
-              <Link key={route.id} href="/book-details" className="ds-route-card">
+              <Link key={route.id} href="/reserve" className="ds-route-card">
                 <div className="ds-route-media" style={{ backgroundImage: `linear-gradient(0deg, rgba(4, 40, 32, .16), rgba(4, 40, 32, .02)), url("${routePhotos[index % routePhotos.length]}")` }}>
                   <span className="ds-route-photo-label">BUS JOURNEY</span>
                 </div>

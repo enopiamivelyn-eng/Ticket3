@@ -79,8 +79,15 @@ export default function ReservePage() {
         const availableRoutes: RouteOption[] = data.routes || [];
         setRoutes(availableRoutes);
         if (availableRoutes.length) {
-          setOrigin(availableRoutes[0].from);
-          setDestination(availableRoutes[0].to);
+          const params = new URLSearchParams(window.location.search);
+          const requestedRoute = availableRoutes.find((route) => route.from === params.get('origin') && route.to === params.get('destination'));
+          const initialRoute = requestedRoute || availableRoutes[0];
+          setOrigin(initialRoute.from);
+          setDestination(initialRoute.to);
+          const requestedDate = params.get('date');
+          if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) setTravelDate(requestedDate);
+          const requestedPassengers = Number(params.get('passengers'));
+          if (Number.isInteger(requestedPassengers) && requestedPassengers >= 1 && requestedPassengers <= 10) setPassengers(requestedPassengers);
         }
       })
       .catch((requestError) => {
