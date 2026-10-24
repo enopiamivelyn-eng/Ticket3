@@ -80,14 +80,12 @@ export default function RoutesPage() {
         credentials: 'include'
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        setRoutes(data.routes || []);
-      } else {
-        setError('Failed to load routes');
-      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Failed to load routes (HTTP ${response.status}).`);
+      setRoutes(data.routes || []);
+      setError('');
     } catch (err) {
-      setError('Network error');
+      setError(err instanceof Error ? err.message : 'Could not reach the routes API.');
     } finally {
       setLoading(false);
     }

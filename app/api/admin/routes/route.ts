@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateRequest, isAdmin } from '@/lib/auth/middleware';
+import { databaseRequestError } from '@/lib/db/errors';
 
 /** GET /api/admin/routes - List every route, including inactive routes. */
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await authenticateRequest(request);
     if (error || !user || !isAdmin(user)) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+      return NextResponse.json({ error: error || 'Admin access required. Sign in with an administrator account.' }, { status: 403 });
     }
 
     const routes = await prisma.route.findMany({
@@ -16,8 +17,8 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ success: true, routes });
   } catch (error) {
-    console.error('Error fetching admin routes:', error);
-    return NextResponse.json({ error: 'Failed to fetch routes' }, { status: 500 });
+    const failure = databaseRequestError(error, 'routes');
+    return NextResponse.json({ error: failure.error }, { status: failure.status });
   }
 }
 

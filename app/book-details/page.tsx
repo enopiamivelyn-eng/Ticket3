@@ -73,7 +73,8 @@ function BookingFormContent() {
             }
           }
         } else {
-          setError('Failed to load trips');
+          const data = await response.json().catch(() => ({}));
+          setError(data.error || `Failed to load trips (HTTP ${response.status}).`);
         }
       } catch (err) {
         console.error('Error fetching trips:', err);

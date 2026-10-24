@@ -72,14 +72,12 @@ export default function BusesPage() {
         credentials: 'include'
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        setBuses(data.buses || []);
-      } else {
-        setError('Failed to load buses');
-      }
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Failed to load buses (HTTP ${response.status}).`);
+      setBuses(data.buses || []);
+      setError('');
     } catch (err) {
-      setError('Network error');
+      setError(err instanceof Error ? err.message : 'Could not reach the buses API.');
     } finally {
       setLoading(false);
     }

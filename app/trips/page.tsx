@@ -141,19 +141,28 @@ export default function TripsPage() {
             model: trip.busModel ?? '',
           },
         })));
+      } else {
+        const data = await tripsRes.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to load trips (HTTP ${tripsRes.status}).`);
       }
 
       if (routesRes.ok) {
         const routesData = await routesRes.json();
         setRoutes(routesData.routes || []);
+      } else {
+        const data = await routesRes.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to load routes (HTTP ${routesRes.status}).`);
       }
 
       if (busesRes.ok) {
         const busesData = await busesRes.json();
         setBuses(busesData.buses || []);
+      } else {
+        const data = await busesRes.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to load buses (HTTP ${busesRes.status}).`);
       }
     } catch (err) {
-      setError('Network error');
+      setError(err instanceof Error ? err.message : 'Could not load admin schedule data.');
     } finally {
       setLoading(false);
     }

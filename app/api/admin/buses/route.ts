@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateRequest, isAdmin } from '@/lib/auth/middleware';
+import { databaseRequestError } from '@/lib/db/errors';
 
 /**
  * GET /api/admin/buses - Get all buses (Admin only)
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     
     if (error || !user || !isAdmin(user)) {
       return NextResponse.json(
-        { error: 'Admin access required' },
+        { error: error || 'Admin access required. Sign in with an administrator account.' },
         { status: 403 }
       );
     }
@@ -40,10 +41,10 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error('Error fetching buses:', error);
+    const failure = databaseRequestError(error, 'buses');
     return NextResponse.json(
-      { error: 'Failed to fetch buses' },
-      { status: 500 }
+      { error: failure.error },
+      { status: failure.status }
     );
   }
 }

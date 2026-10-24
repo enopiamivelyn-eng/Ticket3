@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateRequest, isAdmin } from '@/lib/auth/middleware';
 import { normalizeScheduleTime } from '@/lib/schedule';
+import { databaseRequestError } from '@/lib/db/errors';
 
 /** GET /api/admin/trips - List all trips and their current statuses. */
 export async function GET(request: NextRequest) {
   try {
     const { user, error } = await authenticateRequest(request);
     if (error || !user || !isAdmin(user)) {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+      return NextResponse.json({ error: error || 'Admin access required. Sign in with an administrator account.' }, { status: 403 });
     }
 
     const trips = await prisma.trip.findMany({
@@ -17,8 +18,8 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json({ success: true, trips });
   } catch (error) {
-    console.error('Error fetching admin trips:', error);
-    return NextResponse.json({ error: 'Failed to fetch trips' }, { status: 500 });
+    const failure = databaseRequestError(error, 'trips');
+    return NextResponse.json({ error: failure.error }, { status: failure.status });
   }
 }
 
