@@ -44,6 +44,18 @@ interface Booking {
   };
 }
 
+interface DiscountApplication {
+  id: string;
+  passengerName: string;
+  passengerEmail: string;
+  passengerCategory: string;
+  verificationStatus: string;
+  adminRemarks: string | null;
+  submittedAt: string;
+  bookings: Array<{ id: string; baseFare: number; discountRate: number; discountAmount: number; totalAmount: number }>;
+}
+type DiscountReview = DiscountApplication & { imageUrl: string };
+
 type TabType = 'upcoming' | 'completed' | 'cancelled';
 
 export default function BookingsPage() {
@@ -60,6 +72,10 @@ export default function BookingsPage() {
   const [editingBookingId, setEditingBookingId] = useState<string | null>(null);
   const [statusDraft, setStatusDraft] = useState('');
   const [viewingPassengerBookingId, setViewingPassengerBookingId] = useState<string | null>(null);
+  const [discountApplications, setDiscountApplications] = useState<DiscountApplication[]>([]);
+  const [discountReview, setDiscountReview] = useState<DiscountReview | null>(null);
+  const [discountRemarks, setDiscountRemarks] = useState('');
+  const [discountBusy, setDiscountBusy] = useState(false);
 
   // Keep passenger and admin booking lists in sync with approvals and changes.
   const fetchBookings = useCallback(async () => {
@@ -89,14 +105,55 @@ export default function BookingsPage() {
 
   useLiveDatabaseRefresh(() => { void fetchBookings(); });
 
+  const fetchDiscountApplications = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const response = await fetch('/api/admin/discount-verifications?status=pending', { credentials: 'include', cache: 'no-store' });
+      const data = await response.json();
+      if (response.ok) setDiscountApplications(data.applications || []);
+    } catch { /* Keep the last loaded admin review list when offline. */ }
+  }, [isAdmin]);
+
   useEffect(() => {
     void fetchBookings();
+    void fetchDiscountApplications();
     if (new URLSearchParams(window.location.search).get('discount') === 'pending') {
       setSuccessMessage('Booking saved. Your ID is awaiting verification; payment is paused until the final fare is confirmed.');
     }
     const interval = window.setInterval(() => { void fetchBookings(); }, 8000);
-    return () => window.clearInterval(interval);
-  }, [fetchBookings]);
+    const discountInterval = window.setInterval(() => { void fetchDiscountApplications(); }, 8000);
+    return () => { window.clearInterval(interval); window.clearInterval(discountInterval); };
+  }, [fetchBookings, fetchDiscountApplications]);
+
+  const openDiscountReview = async (application: DiscountApplication) => {
+    setDiscountBusy(true); setError('');
+    try {
+      const response = await fetch(`/api/admin/discount-verifications/${application.id}`, { credentials: 'include', cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not load the private ID image.');
+      setDiscountReview({ ...application, ...data.application });
+      setDiscountRemarks(application.adminRemarks || '');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not load the private ID image.'); }
+    finally { setDiscountBusy(false); }
+  };
+
+  const decideDiscount = async (verificationStatus: 'verified' | 'rejected') => {
+    if (!discountReview) return;
+    if (verificationStatus === 'rejected' && !discountRemarks.trim()) { setError('Enter a reason before rejecting this ID.'); return; }
+    setDiscountBusy(true); setError('');
+    try {
+      const response = await fetch(`/api/admin/discount-verifications/${discountReview.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ verificationStatus, adminRemarks: discountRemarks }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not save the verification decision.');
+      setDiscountReview(null);
+      setSuccessMessage(`Passenger ID ${verificationStatus}.`);
+      await Promise.all([fetchDiscountApplications(), fetchBookings()]);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Could not save the verification decision.'); }
+    finally { setDiscountBusy(false); }
+  };
 
   const handleCancel = async (bookingId: string) => {
     if (!confirm('Are you sure you want to cancel this booking?')) return;
@@ -219,6 +276,14 @@ export default function BookingsPage() {
               </div>
             )}
             {successMessage && <div className="ds-alert ds-alert-success ds-mb" role="status">{successMessage}</div>}
+
+            {isAdmin && <section className="ds-card ds-card-pad ds-mb" aria-labelledby="discount-review-heading">
+              <h2 id="discount-review-heading">Passenger ID verification</h2>
+              <p className="ds-card-sub">Review IDs attached to discounted bookings. Approval applies the 20% fare discount; rejection keeps the regular fare.</p>
+              {discountApplications.length ? <div className="ds-table-wrap"><table className="ds-table"><thead><tr><th>Booking reference</th><th>Passenger</th><th>Category</th><th>Original fare</th><th>Discount</th><th>Final fare</th><th>Status / remarks</th><th>Review</th></tr></thead><tbody>
+                {discountApplications.map((application) => <tr key={application.id}><td>{application.bookings.map((booking) => <div key={booking.id}><code>{booking.id.slice(0, 8)}</code></div>)}</td><td>{application.passengerName}<br/><small>{application.passengerEmail}</small></td><td>{application.passengerCategory === 'senior_citizen' ? 'Senior Citizen' : application.passengerCategory === 'pwd' ? 'PWD' : 'Student'}</td><td>{application.bookings.map((booking) => <div key={booking.id}>{formatPrice(booking.baseFare)}</div>)}</td><td>{application.bookings.map((booking) => <div key={booking.id}>{Math.round(booking.discountRate * 100)}% · {formatPrice(booking.discountAmount)}</div>)}</td><td>{application.bookings.map((booking) => <div key={booking.id}>{formatPrice(booking.totalAmount)}</div>)}</td><td>Pending{application.adminRemarks ? ` · ${application.adminRemarks}` : ''}</td><td><button type="button" className="ds-btn ds-btn-soft ds-btn-sm" onClick={() => void openDiscountReview(application)} disabled={discountBusy}>View ID & review</button></td></tr>)}
+              </tbody></table></div> : <p>No pending passenger ID reviews.</p>}
+            </section>}
 
             {/* Tabs */}
             <div className="ds-tabs ds-mb">
@@ -347,7 +412,9 @@ export default function BookingsPage() {
                       )}
                       {booking.status === 'pending' && (
                         <>
-                          {!isAdmin && <Link href={`/payment?bookingId=${booking.id}`} className="ds-btn ds-btn-primary ds-btn-sm">Pay Now</Link>}
+                          {!isAdmin && booking.passengerCategory !== 'regular' && booking.discountVerification?.verificationStatus === 'pending'
+                            ? <span className="ds-note">Awaiting ID review before payment</span>
+                            : !isAdmin && <Link href={`/payment?bookingId=${booking.id}`} className="ds-btn ds-btn-primary ds-btn-sm">Pay Now</Link>}
                           {!isAdmin && <button type="button" className="ds-btn ds-btn-outline ds-btn-sm" onClick={() => handleCancel(booking.id)} disabled={cancellingId === booking.id}>{cancellingId === booking.id ? 'Cancelling...' : 'Cancel'}</button>}
                         </>
                       )}
@@ -394,6 +461,13 @@ export default function BookingsPage() {
           </main>
         </div>
       </div>
+      {discountReview && <div role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !discountBusy) setDiscountReview(null); }} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', padding: 16 }}><section role="dialog" aria-modal="true" aria-labelledby="booking-discount-review-title" className="ds-card" style={{ width: 'min(900px, 100%)', maxHeight: '95vh', overflow: 'auto', padding: 24 }}>
+        <h2 id="booking-discount-review-title">Review passenger ID</h2><p>{discountReview.passengerName} ({discountReview.passengerEmail}) · {discountReview.passengerCategory === 'senior_citizen' ? 'Senior Citizen' : discountReview.passengerCategory === 'pwd' ? 'PWD' : 'Student'}</p>
+        {discountReview.bookings.map((booking) => <p key={booking.id}>Booking {booking.id} · Base {formatPrice(booking.baseFare)} · Current discount {Math.round(booking.discountRate * 100)}% · Final {formatPrice(booking.totalAmount)}</p>)}
+        <a href={discountReview.imageUrl} target="_blank" rel="noreferrer" aria-label="Open larger private passenger ID image"><img src={discountReview.imageUrl} alt={`Passenger ID for ${discountReview.passengerName}`} style={{ display: 'block', maxWidth: '100%', maxHeight: '55vh', objectFit: 'contain', margin: '16px auto', borderRadius: 8 }} /></a>
+        <label htmlFor="booking-discount-admin-remarks">Admin remarks (required when rejecting)</label><textarea id="booking-discount-admin-remarks" value={discountRemarks} onChange={(event) => setDiscountRemarks(event.target.value)} maxLength={1000} rows={3} style={{ width: '100%', margin: '8px 0 16px' }} />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}><button className="ds-btn ds-btn-primary" type="button" onClick={() => void decideDiscount('verified')} disabled={discountBusy}>{discountBusy ? 'Saving…' : 'Approve ID'}</button><button className="ds-btn ds-btn-outline" type="button" onClick={() => void decideDiscount('rejected')} disabled={discountBusy}>Reject ID</button><button className="ds-btn ds-btn-soft" type="button" onClick={() => setDiscountReview(null)} disabled={discountBusy}>Close</button></div>
+      </section></div>}
     </AuthGate>
   );
 }

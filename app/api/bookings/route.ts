@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/prisma';
 import { authenticateRequest, isAdmin } from '@/lib/auth/middleware';
+import { deletePrivateImage, getAccessToken, uploadPrivateImage } from '@/lib/discount-storage';
 import { databaseRequestError } from '@/lib/db/errors';
 import { Prisma } from '@prisma/client';
-import { getSupabaseUser } from '@/lib/supabase';
 
 /**
  * GET /api/bookings - Get user's bookings
@@ -128,6 +129,8 @@ export async function GET(request: NextRequest) {
  * POST /api/bookings - Create a new booking
  */
 export async function POST(request: NextRequest) {
+  let uploadedIdPath = '';
+  let createdVerificationId = '';
   try {
     // Authenticate user
     const { user, error } = await authenticateRequest(request);
@@ -146,7 +149,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
+    const isMultipart = request.headers.get('content-type')?.includes('multipart/form-data');
+    const form = isMultipart ? await request.formData() : null;
+    const body = form ? Object.fromEntries(form.entries()) : await request.json();
     const {
       tripId,
       seatNumber,
@@ -155,26 +160,40 @@ export async function POST(request: NextRequest) {
       passengerEmail,
       passengerPhone,
       passengerCategory,
-      discountVerificationId,
     } = body;
-
-    if (discountVerificationId !== undefined && discountVerificationId !== null && typeof discountVerificationId !== 'string') {
-      return NextResponse.json({ error: 'Invalid discount verification reference.' }, { status: 400 });
-    }
+    const idFile = form?.get('idImage');
 
     // Validate required fields
-    const seatNumbers: string[] = Array.isArray(requestedSeatNumbers)
-      ? requestedSeatNumbers.map((seat: unknown) => typeof seat === 'string' ? seat.trim().toUpperCase() : '')
+    const parsedSeatNumbers = typeof requestedSeatNumbers === 'string'
+      ? (() => { try { return JSON.parse(requestedSeatNumbers); } catch { return []; } })()
+      : requestedSeatNumbers;
+    const category = typeof passengerCategory === 'string' ? passengerCategory : '';
+    const seatNumbers: string[] = Array.isArray(parsedSeatNumbers)
+      ? parsedSeatNumbers.map((seat: unknown) => typeof seat === 'string' ? seat.trim().toUpperCase() : '')
       : typeof seatNumber === 'string' ? [seatNumber.trim().toUpperCase()] : [];
-    if (!tripId || seatNumbers.length === 0 || seatNumbers.length > 10 || seatNumbers.some((seat) => !/^[A-Z]\d{1,2}$/.test(seat)) || new Set(seatNumbers).size !== seatNumbers.length || !passengerName || !passengerEmail || !passengerPhone || !['regular', 'student', 'pwd', 'senior_citizen'].includes(passengerCategory)) {
+    if (!tripId || seatNumbers.length === 0 || seatNumbers.length > 10 || seatNumbers.some((seat) => !/^[A-Z]\d{1,2}$/.test(seat)) || new Set(seatNumbers).size !== seatNumbers.length || !passengerName || !passengerEmail || !passengerPhone || !['regular', 'student', 'pwd', 'senior_citizen'].includes(category)) {
       return NextResponse.json(
         { error: 'All passenger details are required' },
         { status: 400 }
       );
     }
 
-    if (passengerCategory !== 'regular' && seatNumbers.length !== 1) {
+    if (category !== 'regular' && seatNumbers.length !== 1) {
       return NextResponse.json({ error: 'A verified special-category fare applies to one named passenger. Book one discounted seat at a time.' }, { status: 400 });
+    }
+
+    let linkedVerification: { id: string; verificationStatus: string } | null = null;
+    let idBytes: ArrayBuffer | null = null;
+    let idContentType = '';
+    if (category !== 'regular') {
+      if (!(idFile instanceof File)) return NextResponse.json({ error: 'Upload a JPG, JPEG, or PNG passenger ID before booking.' }, { status: 400 });
+      if (idFile.size < 1 || idFile.size > 5 * 1024 * 1024) return NextResponse.json({ error: 'The ID image must be smaller than 5 MB.' }, { status: 400 });
+      idBytes = await idFile.arrayBuffer();
+      const signature = new Uint8Array(idBytes.slice(0, 8));
+      const isPng = signature.length >= 8 && signature[0] === 0x89 && signature[1] === 0x50 && signature[2] === 0x4e && signature[3] === 0x47 && signature[4] === 0x0d && signature[5] === 0x0a && signature[6] === 0x1a && signature[7] === 0x0a;
+      const isJpeg = signature.length >= 3 && signature[0] === 0xff && signature[1] === 0xd8 && signature[2] === 0xff;
+      idContentType = isPng ? 'image/png' : isJpeg ? 'image/jpeg' : '';
+      if (!idContentType || idFile.type !== idContentType) return NextResponse.json({ error: 'The file contents must be a valid JPG or PNG image.' }, { status: 400 });
     }
 
     // Get trip details
@@ -190,30 +209,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let linkedVerification: { id: string; verificationStatus: string } | null = null;
-    if (passengerCategory !== 'regular') {
-      linkedVerification = discountVerificationId
-        ? await prisma.discountVerification.findFirst({
-            where: { id: discountVerificationId, userId: user.userId, passengerCategory, verificationStatus: { in: ['pending', 'verified'] } },
-            select: { id: true, verificationStatus: true },
-          })
-        : await prisma.discountVerification.findFirst({
-            where: { userId: user.userId, passengerCategory, verificationStatus: 'verified' },
-            orderBy: { reviewedAt: 'desc' },
-            select: { id: true, verificationStatus: true },
-          });
-      if (!linkedVerification) return NextResponse.json({ error: 'Submit an ID application for this passenger category before booking.' }, { status: 400 });
-    }
-    if (linkedVerification?.verificationStatus === 'verified') {
-      const token = request.cookies.get('auth-token')?.value || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
-      const account = await getSupabaseUser(token);
-      const accountName = account.user_metadata?.name?.trim().toLocaleLowerCase();
-      if (accountName && accountName !== passengerName.trim().toLocaleLowerCase()) {
-        return NextResponse.json({ error: 'For a verified discount, the booking passenger name must match the name on your passenger account and reviewed ID.' }, { status: 400 });
-      }
-    }
     const baseFare = trip.price * seatNumbers.length;
-    const discountRate = linkedVerification?.verificationStatus === 'verified' ? 0.2 : 0;
+    const discountRate = 0;
     const discountAmount = Math.round((trip.price * discountRate + Number.EPSILON) * 100) / 100;
     const finalFare = Math.round((baseFare - discountAmount + Number.EPSILON) * 100) / 100;
 
@@ -246,6 +243,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (category !== 'regular' && idBytes && idContentType) {
+      uploadedIdPath = `${user.userId}/${randomUUID()}.${idContentType === 'image/png' ? 'png' : 'jpg'}`;
+      await uploadPrivateImage(uploadedIdPath, idContentType, idBytes, getAccessToken(request));
+      linkedVerification = await prisma.discountVerification.create({
+        data: { userId: user.userId, passengerCategory: category, idFilePath: uploadedIdPath },
+        select: { id: true, verificationStatus: true },
+      });
+      createdVerificationId = linkedVerification.id;
+    }
+
     // Create booking in a transaction
     const booking = await prisma.$transaction(async (tx) => {
       // Create the booking
@@ -257,7 +264,7 @@ export async function POST(request: NextRequest) {
           passengerName,
           passengerEmail,
           passengerPhone,
-          passengerCategory,
+          passengerCategory: category,
           baseFare,
           discountRate,
           discountAmount,
@@ -321,6 +328,8 @@ export async function POST(request: NextRequest) {
       },
     }, { status: 201 });
   } catch (error) {
+    if (createdVerificationId) await prisma.discountVerification.delete({ where: { id: createdVerificationId } }).catch(() => undefined);
+    if (uploadedIdPath) await deletePrivateImage(uploadedIdPath, getAccessToken(request)).catch(() => undefined);
     console.error('Error creating booking:', error);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003' && String(error.meta?.field_name ?? '').includes('userId')) {
       return NextResponse.json(
