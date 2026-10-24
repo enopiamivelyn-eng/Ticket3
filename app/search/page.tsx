@@ -217,7 +217,7 @@ export default function SearchPage() {
                       <div><dt>Fare per passenger</dt><dd>{formatPrice(trip.price)}</dd></div>
                       <div className="ds-search-available-seats"><dt>Available seat numbers ({freeSeats.length})</dt><dd>{freeSeats.length ? freeSeats.join(', ') : 'No seats available'}</dd></div>
                     </dl>
-                    <Link className="ds-btn ds-btn-primary ds-btn-block" href={`/reserve?origin=${encodeURIComponent(trip.from)}&destination=${encodeURIComponent(trip.to)}&date=${encodeURIComponent(trip.departureDate)}&passengers=${encodeURIComponent(query.passengers)}`}>
+                    <Link className="ds-btn ds-btn-primary ds-btn-block" href={`/book-details?tripId=${encodeURIComponent(trip.id)}&date=${encodeURIComponent(trip.departureDate)}&passengers=${encodeURIComponent(query.passengers)}`}>
                       Book now
                     </Link>
                   </article>
