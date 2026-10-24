@@ -1,9 +1,12 @@
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+// Server routes use the private server-side names. The NEXT_PUBLIC aliases are
+// supported for Vercel projects that expose the same public URL/anon key to the
+// browser for Realtime. Never put a service-role key in either variable.
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export function supabaseConfig() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    throw new Error('Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY.');
+    throw new Error('Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY (or their NEXT_PUBLIC_ equivalents) in the Vercel project, then redeploy.');
   }
   return { url: SUPABASE_URL.replace(/\/$/, ''), anonKey: SUPABASE_ANON_KEY };
 }

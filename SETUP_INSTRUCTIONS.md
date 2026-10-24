@@ -12,15 +12,19 @@ npm install
 
 ## 2. Configure Supabase
 
-Create a Supabase project. In **Project Settings → API**, copy the Project URL and anon key. In **Project Settings → Database → Connection string**, copy the PostgreSQL URI. Use a direct or session-pooler URI compatible with Prisma.
+Create a Supabase project. In **Project Settings → API**, copy the Project URL and anon key. Keep these values private except for the anon key, which is intended for public clients. Never use a service-role key in this app.
 
-Set these values in `ticket/.env.local` for the Next.js app and in `ticket/.env` for Prisma CLI commands:
+Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `DATABASE_URL` in `.env.local` for the Next.js app and in `.env` for Prisma CLI commands. For local development, a direct or session-pooler PostgreSQL URI can be used if it is reachable from your network. The local URI shown here is only an example:
 
 ```env
 SUPABASE_URL=https://YOUR_PROJECT.supabase.co
 SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
 DATABASE_URL=postgresql://postgres:YOUR_DATABASE_PASSWORD@YOUR_DATABASE_HOST:5432/postgres?sslmode=require
 ```
+
+For Vercel serverless deployments, set `DATABASE_URL` in **Vercel → Project → Settings → Environment Variables** to the **Transaction pooler** URI from **Supabase → Connect**. Use the exact host and username Supabase provides; it should use port `6543`. Add `pgbouncer=true&connection_limit=1&sslmode=require` to the query string. Select every Vercel environment where the app will run (Production and/or Preview), then redeploy because existing deployments do not receive changed environment variables.
+
+Set `SUPABASE_URL` and `SUPABASE_ANON_KEY` for those same Vercel environments. All three values must refer to the same Supabase project. Never commit real values from `.env` or `.env.local`.
 
 Keep the real values private. These environment files are excluded from Git. Never put the database connection string or a Supabase service-role key in browser code.
 

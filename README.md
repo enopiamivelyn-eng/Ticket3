@@ -5,7 +5,7 @@ A responsive bus ticketing app built with Next.js, TypeScript, Supabase Auth, Su
 ## Quick start
 
 1. Install Node.js 20.9+ and run `npm install`.
-2. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `DATABASE_URL` in `.env.local` and `.env` (see [setup instructions](./SETUP_INSTRUCTIONS.md)).
+2. Configure `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `DATABASE_URL` in `.env.local` and `.env` (see [setup instructions](./SETUP_INSTRUCTIONS.md)). For Vercel Realtime in the browser, also set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` to the same public project URL and anon key.
 3. Run `npm run db:setup` to create the PostgreSQL schema and seed buses, routes, and trips.
 4. Run `npm run dev` and open `http://localhost:3000`.
 

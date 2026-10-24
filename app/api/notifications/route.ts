@@ -22,6 +22,29 @@ async function restRequest<T>(path: string, token: string, init: RequestInit = {
   return payload as T;
 }
 
+function logNotificationsError(error: unknown) {
+  const value = error as {
+    name?: unknown;
+    message?: unknown;
+    status?: unknown;
+    code?: unknown;
+    cause?: unknown;
+  } | null;
+  const cause = value?.cause as { name?: unknown; message?: unknown; code?: unknown } | undefined;
+
+  console.error('[supabase:notifications]', {
+    name: typeof value?.name === 'string' ? value.name : typeof error,
+    status: typeof value?.status === 'number' ? value.status : 'none',
+    code: typeof value?.code === 'string' ? value.code : 'none',
+    message: typeof value?.message === 'string' ? value.message : String(error ?? 'Unknown error'),
+    cause: cause ? {
+      name: typeof cause.name === 'string' ? cause.name : 'unknown',
+      code: typeof cause.code === 'string' ? cause.code : 'none',
+      message: typeof cause.message === 'string' ? cause.message : 'none',
+    } : undefined,
+  });
+}
+
 interface NotificationRow {
   id: number;
   actor_id: string;
@@ -46,6 +69,7 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json({ notifications, unreadCount: unreadRows.length });
   } catch (error) {
+    logNotificationsError(error);
     const status = (error as { status?: number }).status;
     const code = (error as { code?: string }).code;
     if (code === 'PGRST205') {
@@ -67,6 +91,7 @@ export async function PATCH(request: NextRequest) {
     });
     return NextResponse.json({ success: true });
   } catch (error) {
+    logNotificationsError(error);
     const status = (error as { status?: number }).status;
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Could not update notifications.' }, { status: status === 401 ? 401 : 503 });
   }

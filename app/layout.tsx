@@ -25,8 +25,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <AuthProvider
           realtimeConfig={{
-            url: process.env.SUPABASE_URL || '',
-            anonKey: process.env.SUPABASE_ANON_KEY || '',
+            // The anon key is designed to be public. NEXT_PUBLIC values are
+            // replaced at build time by Next.js and are used by the browser
+            // Realtime client; server variables remain a fallback.
+            url: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '',
+            anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '',
           }}
         >
           {children}

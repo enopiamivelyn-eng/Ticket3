@@ -37,7 +37,25 @@ export function databaseRequestError(error: unknown, resource: string) {
     const safeDetails = details.replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, '[database URL redacted]');
     console.error(`[database:${resource}]`, { code: code || metadataCode || 'none', message: safeDetails });
   } else {
-    console.error(`[database:${resource}]`, code || metadataCode || 'unclassified database error');
+    // Keep enough detail to diagnose production failures while ensuring the
+    // connection URI and any password fields never reach the deployment logs.
+    const safeDetails = details
+      .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, '[database URL redacted]')
+      .replace(/(password\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
+    const cause = error instanceof Error && error.cause instanceof Error ? error.cause : undefined;
+    const safeCause = cause?.message
+      .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, '[database URL redacted]')
+      .replace(/(password\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]');
+    console.error(`[database:${resource}]`, {
+      name: error instanceof Error ? error.name : typeof error,
+      code: code || metadataCode || 'none',
+      message: safeDetails,
+      cause: cause ? {
+        name: cause.name,
+        code: 'code' in cause ? String(cause.code ?? 'none') : 'none',
+        message: safeCause,
+      } : undefined,
+    });
   }
 
   return {
