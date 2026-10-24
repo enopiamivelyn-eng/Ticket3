@@ -21,6 +21,10 @@ interface Booking {
   paymentStatus: string;
   paymentMethod: string | null;
   totalAmount: number;
+  passengerCategory: string;
+  baseFare: number;
+  discountRate: number;
+  discountAmount: number;
   bookingDate: string;
   trip: {
     route: {
@@ -311,9 +315,13 @@ export default function BookingsPage() {
                       <span className={`ds-badge ${statusClass(booking.status)}`}>
                         {displayBookingStatus(booking.status)}
                       </span>
+                      <span style={{ fontSize: '0.8125rem', color: 'rgba(255,255,255,0.72)', marginTop: '0.25rem' }}>
+                        {booking.passengerCategory === 'regular' ? 'Regular fare' : `${booking.passengerCategory.replace('_', ' ')} · ${booking.discountRate ? `${Math.round(booking.discountRate * 100)}% discount` : 'no discount until ID verified'}`}
+                      </span>
                       {isAdmin && ['pending', 'approved', 'confirmed'].includes(booking.status) && <button type="button" className="ds-btn ds-btn-soft ds-btn-sm" onClick={() => { setEditingBookingId(editingBookingId === booking.id ? null : booking.id); setStatusDraft(''); }} aria-expanded={editingBookingId === booking.id}>{editingBookingId === booking.id ? 'Close' : 'Edit status'}</button>}
                       {(!isAdmin || editingBookingId === booking.id) && (
                         <span className={`ds-row-fare ${isAdmin ? 'ds-row-fare-large' : ''}`}>
+                          {booking.discountAmount > 0 && <small style={{ display: 'block', fontSize: '0.75rem', opacity: 0.8 }}>Fare {formatPrice(booking.baseFare)} · −{formatPrice(booking.discountAmount)}</small>}
                           {formatPrice(booking.totalAmount)}
                         </span>
                       )}
@@ -355,15 +363,23 @@ export default function BookingsPage() {
                       <span>Phone: {booking.passengerPhone}</span>
                     </div>}
                     {isAdmin && editingBookingId === booking.id && <div className="ds-row-status-editor">
-                      <label htmlFor="booking-status-select">Change booking status</label>
-                      <select id="booking-status-select" value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)} disabled={cancellingId === booking.id}>
+                      <label htmlFor={`booking-status-select-${booking.id}`}>Change booking status</label>
+                      <select id={`booking-status-select-${booking.id}`} value={statusDraft} onChange={(event) => setStatusDraft(event.target.value)} disabled={cancellingId === booking.id}>
                         <option value="">Choose a status</option>
                         <option value="approved" disabled={booking.status !== 'pending'}>Approve</option>
-                        <option value="complete" disabled={!isApprovedBookingStatus(booking.status) || booking.paymentStatus !== 'paid'}>Complete</option>
+                        <option value="complete" disabled={!isApprovedBookingStatus(booking.status) || booking.paymentStatus !== 'paid'}>
+                          {!isApprovedBookingStatus(booking.status) ? 'Complete (approve first)' : booking.paymentStatus !== 'paid' ? 'Complete (verify payment first)' : 'Complete'}
+                        </option>
                         <option value="rejected" disabled={!(booking.status === 'pending' || isApprovedBookingStatus(booking.status)) || booking.paymentStatus === 'paid'}>Reject (info mismatch)</option>
                       </select>
                       <button type="button" className="ds-btn ds-btn-primary ds-btn-sm" onClick={() => { if (statusDraft === 'approved' || statusDraft === 'complete' || statusDraft === 'rejected') void handleAdminStatus(booking.id, statusDraft); }} disabled={cancellingId === booking.id || !statusDraft}>{cancellingId === booking.id ? 'Saving...' : 'Save status'}</button>
-                      {booking.paymentStatus === 'paid' && <small>Refund this booking before rejecting it.</small>}
+                      {booking.paymentStatus === 'paid'
+                        ? <small>Refund this booking before rejecting it.</small>
+                        : booking.status === 'pending'
+                          ? <small>To complete a booking, approve it first, then verify its payment in <Link href="/admin/payments">Payment review</Link>.</small>
+                          : isApprovedBookingStatus(booking.status)
+                            ? <small>To complete this booking, verify its payment in <Link href="/admin/payments">Payment review</Link> first.</small>
+                            : null}
                     </div>}
                   </article>
                 ))}

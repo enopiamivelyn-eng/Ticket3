@@ -37,6 +37,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [statsUserId, setStatsUserId] = useState<string | null>(null);
   const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([]);
+  const [discountDashboardStatus, setDiscountDashboardStatus] = useState('Check eligibility');
   const activeUserId = useRef<string | null>(null);
   const accountDataLoading = loading || statsUserId !== user?.id;
 
@@ -59,6 +60,27 @@ export default function DashboardPage() {
       clearInterval(interval);
       window.removeEventListener('app:database-change', refresh);
     };
+  }, [user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const refreshDiscountStatus = async () => {
+      try {
+        const response = await fetch(user.role === 'admin' ? '/api/admin/discount-verifications?status=pending' : '/api/discount-verifications?includeImage=false', { credentials: 'include', cache: 'no-store' });
+        const data = await response.json();
+        if (!response.ok || !active) return;
+        if (user.role === 'admin') setDiscountDashboardStatus(String(data.counts?.pending || 0));
+        else if (data.verification) {
+          const categoryName = ({ student: 'Student', pwd: 'PWD', senior_citizen: 'Senior' } as Record<string, string>)[data.verification.passengerCategory] || 'Discount';
+          setDiscountDashboardStatus(`${categoryName}: ${data.verification.verificationStatus}`);
+        } else setDiscountDashboardStatus('Not submitted');
+      } catch { /* Keep the last known dashboard state when the request is offline. */ }
+    };
+    void refreshDiscountStatus();
+    const interval = window.setInterval(() => void refreshDiscountStatus(), 10000);
+    window.addEventListener('app:database-change', refreshDiscountStatus);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener('app:database-change', refreshDiscountStatus); };
   }, [user?.id, user?.role]);
 
   const fetchDashboardStats = async (userId: string, admin: boolean) => {
@@ -245,6 +267,11 @@ export default function DashboardPage() {
                       <h3 className="ds-stat-value">{isAdmin ? stats.totalSchedules : stats.upcomingTrips}</h3>
                       <p className="ds-stat-label">{isAdmin ? 'Total Schedules' : 'Upcoming Trips'}</p>
                     </div>
+                  </Link>
+
+                  <Link href={isAdmin ? '/admin/discount-verifications' : '/discount-verification'} className="ds-stat-card" style={{ textDecoration: 'none', color: 'inherit' }}>
+                    <div className="ds-stat-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/><circle cx="17" cy="16" r="3"/></svg></div>
+                    <div><h3 className="ds-stat-value">{discountDashboardStatus}</h3><p className="ds-stat-label">{isAdmin ? 'Pending discount applications' : 'Passenger discount verification'}</p></div>
                   </Link>
                 </div>
 

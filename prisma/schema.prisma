@@ -70,12 +70,36 @@ model Booking {
   ticketToken     String?   @unique
   checkedInAt     DateTime? @db.Timestamptz(6)
   totalAmount     Float
+  passengerCategory String   @default("regular")
+  baseFare        Float      @default(0)
+  discountRate    Float      @default(0)
+  discountAmount  Float      @default(0)
+  discountVerificationId String?
   bookingDate     DateTime  @default(now()) @db.Timestamptz(6)
   createdAt       DateTime  @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @db.Timestamptz(6)
   trip            Trip      @relation(fields: [tripId], references: [id])
+  discountVerification DiscountVerification? @relation(fields: [discountVerificationId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([tripId])
   @@index([status])
+  @@index([discountVerificationId])
+}
+
+model DiscountVerification {
+  id                 String   @id @default(uuid())
+  userId             String
+  passengerCategory  String
+  idFilePath         String
+  verificationStatus String   @default("pending")
+  adminRemarks       String?
+  reviewedBy         String?
+  submittedAt        DateTime @default(now()) @db.Timestamptz(6)
+  reviewedAt         DateTime? @db.Timestamptz(6)
+  updatedAt          DateTime @updatedAt @db.Timestamptz(6)
+  bookings           Booking[]
+
+  @@index([userId, submittedAt])
+  @@index([verificationStatus, submittedAt])
 }

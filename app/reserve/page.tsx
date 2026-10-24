@@ -65,6 +65,13 @@ export default function ReservePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [searchError, setSearchError] = useState('');
+  const [passengerCategory, setPassengerCategory] = useState('regular');
+  const [verifiedCategories, setVerifiedCategories] = useState<string[]>([]);
+  const [verification, setVerification] = useState<{ verificationStatus: string; passengerCategory: string; adminRemarks: string | null } | null>(null);
+  const [idFile, setIdFile] = useState<File | null>(null);
+  const [idPreview, setIdPreview] = useState('');
+  const [idUploadMessage, setIdUploadMessage] = useState('');
+  const [uploadingId, setUploadingId] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -100,13 +107,53 @@ export default function ReservePage() {
     setContactNumber((current) => current || user.phone || '');
   }, [user]);
 
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    fetch('/api/discount-verifications?includeImage=false', { credentials: 'include', cache: 'no-store' })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not check discount verification.');
+        if (active) { setVerifiedCategories(data.verifiedCategories || []); setVerification(data.verification || null); }
+      })
+      .catch(() => { if (active) setVerification(null); });
+    return () => { active = false; };
+  }, [user]);
+
+  useEffect(() => {
+    if (!idFile) { setIdPreview(''); return; }
+    const url = URL.createObjectURL(idFile);
+    setIdPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [idFile]);
+
+  const uploadDiscountId = async () => {
+    if (!idFile || passengerCategory === 'regular') return;
+    setUploadingId(true); setIdUploadMessage(''); setError('');
+    try {
+      const form = new FormData();
+      form.set('passengerCategory', passengerCategory);
+      form.set('idImage', idFile);
+      const response = await fetch('/api/discount-verifications', { method: 'POST', credentials: 'include', body: form });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not submit your ID.');
+      setVerification(data.verification);
+      setIdFile(null);
+      setIdUploadMessage('ID submitted securely. Your fare stays undiscounted until an administrator verifies it.');
+    } catch (cause) {
+      setIdUploadMessage(cause instanceof Error ? cause.message : 'Could not submit your ID.');
+    } finally { setUploadingId(false); }
+  };
+
   const origins = useMemo(() => Array.from(new Set(routes.map((route) => route.from))), [routes]);
   const destinations = useMemo(
     () => Array.from(new Set(routes.filter((route) => route.from === origin).map((route) => route.to))),
     [routes, origin],
   );
   const signedIn = Boolean(user) && !authLoading;
-  const total = selectedTrip ? selectedTrip.price * passengers : 0;
+  const verifiedFare = passengerCategory !== 'regular' && verifiedCategories.includes(passengerCategory) && seatNumbers.length === 1;
+  const baseTotal = selectedTrip ? selectedTrip.price * passengers : 0;
+  const total = verifiedFare ? baseTotal - selectedTrip!.price * 0.2 : baseTotal;
   const takenSeatNumbers = normalizeBookedSeatNumbers(selectedTrip?.bookedSeatNumbers);
   const canSubmit = Boolean(
     signedIn && selectedTrip && seatNumbers.length === passengers && passengerName.trim() &&
@@ -195,6 +242,7 @@ export default function ReservePage() {
           passengerName: passengerName.trim(),
           passengerEmail: email.trim(),
           passengerPhone: contactNumber.trim(),
+          passengerCategory,
         }),
       });
       const data = await response.json();
@@ -342,7 +390,22 @@ export default function ReservePage() {
                 <label className="ds-booking-field" htmlFor="passenger-name"><span>Full name</span><input id="passenger-name" value={passengerName} onChange={(event) => setPassengerName(event.target.value)} placeholder="As shown on your ID" autoComplete="name" required /></label>
                 <label className="ds-booking-field" htmlFor="passenger-phone"><span>Mobile number</span><input id="passenger-phone" type="tel" value={contactNumber} onChange={(event) => setContactNumber(event.target.value)} placeholder="e.g. 0917 123 4567" autoComplete="tel" required /></label>
                 <label className="ds-booking-field" htmlFor="passenger-email"><span>Email</span><input id="passenger-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" autoComplete="email" required /></label>
+                <label className="ds-booking-field" htmlFor="passenger-category"><span>Passenger category</span><select id="passenger-category" value={passengerCategory} onChange={(event) => { setPassengerCategory(event.target.value); setIdFile(null); setIdUploadMessage(''); }}><option value="regular">Regular · no special discount</option><option value="student">Student · 20% when verified</option><option value="pwd">PWD · 20% when verified</option><option value="senior_citizen">Senior Citizen · 20% when verified</option></select></label>
               </div>
+              {passengerCategory !== 'regular' && <div className="ds-card ds-card-pad" style={{ marginTop: 16 }}>
+                <strong>Discount ID verification</strong>
+                <p className="ds-card-sub">Status: {verifiedCategories.includes(passengerCategory) ? 'Verified' : verification?.passengerCategory === passengerCategory ? verification.verificationStatus : 'Not submitted'}. A 20% discount applies only after verification and only to one named passenger fare.</p>
+                {verification?.passengerCategory === passengerCategory && verification.adminRemarks && <p className="ds-alert ds-alert-info">Admin feedback: {verification.adminRemarks}</p>}
+                {!verifiedCategories.includes(passengerCategory) && <>
+                  <label className="ds-booking-field" htmlFor="booking-discount-id"><span>Choose valid ID image (JPG or PNG, up to 5 MB)</span><input id="booking-discount-id" type="file" accept="image/jpeg,image/png" onChange={(event) => { const file = event.target.files?.[0] || null; setIdFile(file); setIdUploadMessage(''); }} disabled={verification?.verificationStatus === 'pending'} /></label>
+                  {idPreview && <img src={idPreview} alt="Preview of selected ID document" style={{ display: 'block', maxWidth: 280, maxHeight: 180, objectFit: 'contain', marginTop: 12 }} />}
+                  {idFile && <p>{idFile.name} · Ready to upload</p>}
+                  <button type="button" className="ds-btn ds-btn-soft ds-btn-sm" onClick={() => void uploadDiscountId()} disabled={!idFile || uploadingId || verification?.verificationStatus === 'pending'}>{uploadingId ? 'Submitting ID…' : 'Submit ID for verification'}</button>
+                  {idUploadMessage && <p role="status">{idUploadMessage}</p>}
+                  {verification?.verificationStatus === 'pending' && <p>Your ID is waiting for admin review. The fare is undiscounted until approval.</p>}
+                  <p>Only administrators can view this private document. You may also manage it from <Link href="/discount-verification">Discount Verification</Link>.</p>
+                </>}
+              </div>}
             </section>
           </form>
 
@@ -354,6 +417,7 @@ export default function ReservePage() {
               <div><dt>Date</dt><dd>{selectedTrip ? prettyDate(selectedTrip.departureDate) : '—'}</dd></div>
               <div><dt>Departure</dt><dd>{selectedTrip ? formatScheduleTime(selectedTrip.departureTime) : '—'}</dd></div>
               <div><dt>Seats</dt><dd>{seatNumbers.length ? seatNumbers.join(', ') : '—'}</dd></div>
+              {verifiedFare && <><div><dt>Original fare</dt><dd>{formatPrice(baseTotal)}</dd></div><div><dt>Verified discount (20%)</dt><dd>−{formatPrice(selectedTrip!.price * 0.2)}</dd></div></>}
               <div className="is-total"><dt>Total</dt><dd>{formatPrice(total)}</dd></div>
             </dl>
             {signedIn ? (

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/prisma';
 import { authenticateRequest, isAdmin } from '@/lib/auth/middleware';
 import { databaseRequestError } from '@/lib/db/errors';
 import { Prisma } from '@prisma/client';
+import { getSupabaseUser } from '@/lib/supabase';
 
 /**
  * GET /api/bookings - Get user's bookings
@@ -45,6 +46,11 @@ export async function GET(request: NextRequest) {
         paymentStatus: true,
         paymentMethod: true,
         totalAmount: true,
+        passengerCategory: true,
+        baseFare: true,
+        discountRate: true,
+        discountAmount: true,
+        discountVerificationId: true,
         bookingDate: true,
         createdAt: true,
         trip: {
@@ -76,6 +82,11 @@ export async function GET(request: NextRequest) {
       paymentStatus: booking.paymentStatus,
       paymentMethod: booking.paymentMethod,
       totalAmount: booking.totalAmount,
+      passengerCategory: booking.passengerCategory,
+      baseFare: booking.baseFare,
+      discountRate: booking.discountRate,
+      discountAmount: booking.discountAmount,
+      discountVerificationId: booking.discountVerificationId,
       bookingDate: booking.bookingDate,
       route: booking.trip.route.name,
       from: booking.trip.route.fromCity,
@@ -141,17 +152,22 @@ export async function POST(request: NextRequest) {
       passengerName,
       passengerEmail,
       passengerPhone,
+      passengerCategory = 'regular',
     } = body;
 
     // Validate required fields
     const seatNumbers: string[] = Array.isArray(requestedSeatNumbers)
       ? requestedSeatNumbers.map((seat: unknown) => typeof seat === 'string' ? seat.trim().toUpperCase() : '')
       : typeof seatNumber === 'string' ? [seatNumber.trim().toUpperCase()] : [];
-    if (!tripId || seatNumbers.length === 0 || seatNumbers.length > 10 || seatNumbers.some((seat) => !/^[A-Z]\d{1,2}$/.test(seat)) || new Set(seatNumbers).size !== seatNumbers.length || !passengerName || !passengerEmail || !passengerPhone) {
+    if (!tripId || seatNumbers.length === 0 || seatNumbers.length > 10 || seatNumbers.some((seat) => !/^[A-Z]\d{1,2}$/.test(seat)) || new Set(seatNumbers).size !== seatNumbers.length || !passengerName || !passengerEmail || !passengerPhone || !['regular', 'student', 'pwd', 'senior_citizen'].includes(passengerCategory)) {
       return NextResponse.json(
         { error: 'All passenger details are required' },
         { status: 400 }
       );
+    }
+
+    if (passengerCategory !== 'regular' && seatNumbers.length !== 1) {
+      return NextResponse.json({ error: 'A verified special-category fare applies to one named passenger. Book one discounted seat at a time.' }, { status: 400 });
     }
 
     // Get trip details
@@ -166,6 +182,24 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
+
+    const verifiedDiscount = passengerCategory === 'regular' ? null : await prisma.discountVerification.findFirst({
+      where: { userId: user.userId, passengerCategory, verificationStatus: 'verified' },
+      orderBy: { reviewedAt: 'desc' },
+      select: { id: true },
+    });
+    if (verifiedDiscount) {
+      const token = request.cookies.get('auth-token')?.value || request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') || '';
+      const account = await getSupabaseUser(token);
+      const accountName = account.user_metadata?.name?.trim().toLocaleLowerCase();
+      if (accountName && accountName !== passengerName.trim().toLocaleLowerCase()) {
+        return NextResponse.json({ error: 'For a verified discount, the booking passenger name must match the name on your passenger account and reviewed ID.' }, { status: 400 });
+      }
+    }
+    const baseFare = trip.price * seatNumbers.length;
+    const discountRate = verifiedDiscount ? 0.2 : 0;
+    const discountAmount = Math.round((trip.price * discountRate + Number.EPSILON) * 100) / 100;
+    const finalFare = Math.round((baseFare - discountAmount + Number.EPSILON) * 100) / 100;
 
     // Check if trip is available
     if (trip.status !== 'scheduled') {
@@ -207,7 +241,12 @@ export async function POST(request: NextRequest) {
           passengerName,
           passengerEmail,
           passengerPhone,
-          totalAmount: trip.price * seatNumbers.length,
+          passengerCategory,
+          baseFare,
+          discountRate,
+          discountAmount,
+          discountVerificationId: verifiedDiscount?.id ?? null,
+          totalAmount: finalFare,
           paymentMethod: null,
           status: 'pending',
           paymentStatus: 'unpaid',
@@ -251,6 +290,11 @@ export async function POST(request: NextRequest) {
         paymentStatus: completeBooking!.paymentStatus,
         paymentMethod: completeBooking!.paymentMethod,
         totalAmount: completeBooking!.totalAmount,
+        passengerCategory: completeBooking!.passengerCategory,
+        baseFare: completeBooking!.baseFare,
+        discountRate: completeBooking!.discountRate,
+        discountAmount: completeBooking!.discountAmount,
+        discountVerificationId: completeBooking!.discountVerificationId,
         bookingDate: completeBooking!.bookingDate,
         route: completeBooking!.trip.route.name,
         from: completeBooking!.trip.route.fromCity,
